@@ -79,7 +79,7 @@ public class MainActivity extends Activity {
 		wf = (ImageView) findViewById(R.id.waveForm);
 
 		
-//		tv3 = (TextView) findViewById(R.id.textView3);
+//		tv3 = (TextView) findViewById(R.id.textView3);yo
 //		tv3.setText(getString(R.string.snr, snr));
         
     }
@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
 	    		int max = seekpitch.getMax();
 	    		float x = (float)prog/(float)max;
 	 			rate = 1/4 + x*(9*x/2 - 3/4);// = 1/4 (resp. 4) when x = 0 (resp. 1)
-	 			//NB: very weird TODO: fix this
+	 			//NB: very weird TODO: fix this (cast float)
 	 			tv2.setText(getString(R.string.rate, rate));
 	 			
 	    }
