@@ -106,8 +106,7 @@ public class MainActivity extends Activity {
 	    		int prog = seekpitch.getProgress();	    		
 	    		int max = seekpitch.getMax();
 	    		float x = (float)prog/(float)max;
-	 			rate = 1/4 + x*(9*x/2 - 3/4);// = 1/4 (resp. 4) when x = 0 (resp. 1)
-	 			//NB: very weird TODO: fix this (cast float)
+	 			rate = (float)1/(float)4 + x*((float)9*x/(float)2 - (float)3/(float)4);// = 1/4 (resp. 4) when x = 0 (resp. 1)
 	 			tv2.setText(getString(R.string.rate, rate));
 	 			
 	    }
