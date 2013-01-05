@@ -1,0 +1,14 @@
+<resources>
+
+    <string name="app_name">pitchspock</string>
+    <string name="go_pitch">go pitch</string>
+    <string name="go_speed">go speed</string>
+    <string name="draw_wave">draw wave</string>
+    <string name="play">play</string>
+    <string name="rate">pitch/speed factor = %f</string>
+    <string name="snr">signal/noise ratio = %f</string>
+    <string name="hello_world">PitchSpock 0.1</string>
+    <string name="menu_settings">Settings</string>
+    <string name="title_activity_main">MainActivity</string>
+
+</resources>
