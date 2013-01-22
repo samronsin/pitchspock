@@ -277,6 +277,12 @@ public class MainActivity extends Activity {
 			FloatFFT_1D fft = new FloatFFT_1D(winlen);
 
 			mov = 2;
+			/*3 cases:
+			 	mov = 0 -> the two frames used for next interpolation are the same as the one used for current interpolation (keep two frames in memory)
+			 	mov = 1 -> the two frames used for next interpolation are the last one used for current interpolation and a new frame (keep one frame in memory)
+			 	mov = 2 -> the two frames used for next interpolation are two new frames (no frame in memory)
+			*/
+			 
 			alpha = (float)1;
 			initframeindex_ = 0;
 			
@@ -298,8 +304,7 @@ public class MainActivity extends Activity {
 					floatframeindex = ((float)nextframeindex)*rate;
 					initframeindex_ = (int) floatframeindex;
 					alpha = floatframeindex - (float)initframeindex_;
-					mov = (initframeindex_ == initframecount - 1)?0:(initframeindex_ == initframecount)?1:2;					
-					
+					mov = (initframeindex_ == initframecount - 1)?0:(initframeindex_ == initframecount)?1:2;
 				}
 
 					break;
@@ -312,8 +317,11 @@ public class MainActivity extends Activity {
 					rawAudioData = floatArrayFromLittleEndianData(ledis,hop,!endreached);//load a new raw frame
 					initframecount++;
 					
-					for(int i = 0; i < ola; i++) windowedFloats1[i] = olaData[i];//complete the new frame with saved raw data 
-	 				for(int i = 0; i < ola; i++) olaData[i] = rawAudioData[hop-ola+i];//update the raw data saved
+					for(int i = 0; i < ola; i++) windowedFloats1[i] = olaData[i];
+					//complete the new frame with saved raw data
+					
+	 				for(int i = 0; i < ola; i++) olaData[i] = rawAudioData[hop-ola+i];
+	 				//update the raw data saved
 					
 					for(int i = 0; i < hop; i++) windowedFloats1[ola + i] = rawAudioData[i];
 					windowedFloats1 = multFloatArray(windowedFloats1,window);
