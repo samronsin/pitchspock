@@ -292,7 +292,9 @@ public class MainActivity extends Activity {
 				
 				case 0:{
 					//same two frames used for final frame computation
-					finFreqFrame = pvoc2(freqFrame0, freqFrame1, alpha,hop);
+					finFreqFrame = pvoc2(freqFrame0, freqFrame1, alpha, hop);
+					//alpha is the fractional part of the float index, computed from previous iteration
+					
 					finalFloats0 = finalFloats1;//save the last final windowed frame for ola final samples computation 
 					finalFloats1 = finFreqFrame;
 					fft.realInverse(finalFloats1, true);
@@ -300,6 +302,7 @@ public class MainActivity extends Activity {
 					for(int i = 0; i < ola; i++) finalFloats1[i] += finalFloats0[hop+i];
 					audioData = floatArraytoShort(finalFloats1);
 					audioTrack.write(audioData, 0, hop);
+					
 					nextframeindex++;
 					floatframeindex = ((float)nextframeindex)*rate;
 					initframeindex_ = (int) floatframeindex;
@@ -331,7 +334,8 @@ public class MainActivity extends Activity {
 					fft.realForward(freqFrame1);//compute one new frequency frame
 
 					finFreqFrame = pvoc2(freqFrame0, freqFrame1, alpha,hop);
-					
+					//alpha is the fractional part of the float index, computed from previous iteration
+
 					finalFloats1 = finFreqFrame;
 					fft.realInverse(finalFloats1, true);
 
