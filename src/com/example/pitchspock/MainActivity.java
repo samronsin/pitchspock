@@ -1,6 +1,7 @@
 
 package com.example.pitchspock;
-// ok ok commentaire!
+
+import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -106,7 +107,8 @@ public class MainActivity extends Activity {
 	    		int prog = seekpitch.getProgress();	    		
 	    		int max = seekpitch.getMax();
 	    		float x = (float)prog/(float)max;
-	 			rate = (float)1/(float)4 + x*((float)9*x/(float)2 - (float)3/(float)4);// = 1/4 (resp. 4) when x = 0 (resp. 1)
+	 			rate = 1/4 + x*(9*x/2 - 3/4);// = 1/4 (resp. 4) when x = 0 (resp. 1)
+	 			//NB: very weird TODO: fix this (cast float)
 	 			tv2.setText(getString(R.string.rate, rate));
 	 			
 	    }
@@ -231,14 +233,24 @@ public class MainActivity extends Activity {
 		    
 			File file1 = new File(path1);
 			FileInputStream fis = null;
+			BufferedInputStream bis = null;
 			try {
 				fis = new FileInputStream(file1);
+				bis = new BufferedInputStream(fis);
+				//NB: speeds up the reading process (factor ~10)
+				//TODO: try buffers with java.nio since it allows LITTLE_ENDIAN setting
+				
+				
+				
+				
+				//ok
 				
 			} catch (FileNotFoundException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 			}
-			LittleEndianDataInputStream ledis = new LittleEndianDataInputStream(fis);
+			//LittleEndianDataInputStream ledis = new LittleEndianDataInputStream(fis);
+			LittleEndianDataInputStream ledis = new LittleEndianDataInputStream(bis);
 			
 			AudioTrack audioTrack = new AudioTrack(
 				     AudioManager.STREAM_MUSIC,
@@ -277,12 +289,6 @@ public class MainActivity extends Activity {
 			FloatFFT_1D fft = new FloatFFT_1D(winlen);
 
 			mov = 2;
-			/*3 cases:
-			 	mov = 0 -> the two frames used for next interpolation are the same as the one used for current interpolation (keep two frames in memory)
-			 	mov = 1 -> the two frames used for next interpolation are the last one used for current interpolation and a new frame (keep one frame in memory)
-			 	mov = 2 -> the two frames used for next interpolation are two new frames (no frame in memory)
-			*/
-			 
 			alpha = (float)1;
 			initframeindex_ = 0;
 			
@@ -292,9 +298,7 @@ public class MainActivity extends Activity {
 				
 				case 0:{
 					//same two frames used for final frame computation
-					finFreqFrame = pvoc2(freqFrame0, freqFrame1, alpha, hop);
-					//alpha is the fractional part of the float index, computed from previous iteration
-					
+					finFreqFrame = pvoc2(freqFrame0, freqFrame1, alpha,hop);
 					finalFloats0 = finalFloats1;//save the last final windowed frame for ola final samples computation 
 					finalFloats1 = finFreqFrame;
 					fft.realInverse(finalFloats1, true);
@@ -302,12 +306,12 @@ public class MainActivity extends Activity {
 					for(int i = 0; i < ola; i++) finalFloats1[i] += finalFloats0[hop+i];
 					audioData = floatArraytoShort(finalFloats1);
 					audioTrack.write(audioData, 0, hop);
-					
 					nextframeindex++;
 					floatframeindex = ((float)nextframeindex)*rate;
 					initframeindex_ = (int) floatframeindex;
 					alpha = floatframeindex - (float)initframeindex_;
-					mov = (initframeindex_ == initframecount - 1)?0:(initframeindex_ == initframecount)?1:2;
+					mov = (initframeindex_ == initframecount - 1)?0:(initframeindex_ == initframecount)?1:2;					
+					
 				}
 
 					break;
@@ -320,11 +324,8 @@ public class MainActivity extends Activity {
 					rawAudioData = floatArrayFromLittleEndianData(ledis,hop,!endreached);//load a new raw frame
 					initframecount++;
 					
-					for(int i = 0; i < ola; i++) windowedFloats1[i] = olaData[i];
-					//complete the new frame with saved raw data
-					
-	 				for(int i = 0; i < ola; i++) olaData[i] = rawAudioData[hop-ola+i];
-	 				//update the raw data saved
+					for(int i = 0; i < ola; i++) windowedFloats1[i] = olaData[i];//complete the new frame with saved raw data 
+	 				for(int i = 0; i < ola; i++) olaData[i] = rawAudioData[hop-ola+i];//update the raw data saved
 					
 					for(int i = 0; i < hop; i++) windowedFloats1[ola + i] = rawAudioData[i];
 					windowedFloats1 = multFloatArray(windowedFloats1,window);
@@ -334,8 +335,7 @@ public class MainActivity extends Activity {
 					fft.realForward(freqFrame1);//compute one new frequency frame
 
 					finFreqFrame = pvoc2(freqFrame0, freqFrame1, alpha,hop);
-					//alpha is the fractional part of the float index, computed from previous iteration
-
+					
 					finalFloats1 = finFreqFrame;
 					fft.realInverse(finalFloats1, true);
 
