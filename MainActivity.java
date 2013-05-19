@@ -29,6 +29,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.app.Activity;
 import android.util.FloatMath;
+import android.util.Log;
 import android.view.Menu;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -171,14 +172,16 @@ public class MainActivity extends Activity {
 			File file1 = new File(path1);
 
 			FileInputStream fis = null;
+			BufferedInputStream bis = null;
+
 			try {
 				fis = new FileInputStream(file1);
-				
+				bis = new BufferedInputStream(fis);
 			} catch (FileNotFoundException e) {
 					e.printStackTrace();
 			}
 			
-			LittleEndianDataInputStream ledis = new LittleEndianDataInputStream(fis);
+			LittleEndianDataInputStream ledis = new LittleEndianDataInputStream(bis);
 			
 				try {
 					ledis.skip(44);//skip the header
@@ -626,22 +629,27 @@ public class MainActivity extends Activity {
 	
 	
 	public float[] naivePitch(float[] init, float r){
-		int initlen = init.length;
-		int modilen = (int)((float)initlen*r)+1;
-		float modi[] = new float[modilen];
 		
-		for(int i = 0; i < modilen-1 ; i++){
+		int ini_len = init.length;
+		int fin_len = (int)((float)ini_len*r)+1;
+		float fin[] = new float[fin_len];
+		
+		for(int i = 0; i < fin_len-1 ; i++){
 			
-			float initindf = (float)i/r;
-			int initind = (int) initindf;
-			float alpha = initindf - (float)initind;
-			modi[i]= (initind<initlen-1)?(alpha*init[initind]+(1-alpha)*init[initind+1]):alpha*init[initind];
+			float ini_ind_f = ((float)i)/r;
+			
+			int ini_ind = (int) Math.floor(ini_ind_f);
+			
+			float alpha = ini_ind_f - (float)ini_ind;
+			//Log.d("alpha = ", String.valueOf(alpha));
+			//System.out.print(alpha);
+			fin[i]= (ini_ind < ini_len-1)?((1-alpha)*init[ini_ind]+(alpha)*init[ini_ind+1]):0;//alpha*init[initind];
 			//1st order interpolation sounds bad for rate > 1 (time stretching)
 			//TODO: fix this
 		}
-		modi[modilen-1] = init[initlen-1];
+		fin[fin_len-1] = init[ini_len-1];
 		
-		return modi;
+		return fin;
 	}
 	
 	
