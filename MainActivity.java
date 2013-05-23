@@ -2,6 +2,7 @@
 package com.example.pitchspock;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -9,6 +10,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
 
 import javazoom.jl.decoder.Decoder;
 
@@ -22,12 +27,19 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaPlayer;
+import android.media.MediaRecorder;
+import android.media.MediaRecorder.AudioSource;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.util.FloatMath;
 import android.util.Log;
 import android.view.Menu;
@@ -42,18 +54,28 @@ import android.widget.SeekBar.OnSeekBarChangeListener;
 
 public class MainActivity extends Activity {
 
+	Thread recThread;
+	Thread playThread;
+	LittleEndianDataOutputStream ledos;
 	Button bspeed;
 	Button bpitch;
 	Button bwave;
 	Button bplay;
+	Button brec;
 	SeekBar seekpitch;
 	TextView tv2;
 	TextView tv3;
 	ImageView wf;
+	AudioRecord mRecord = null;
+	AudioTrack audioTrack = null;
+	Handler mHandler = null;
 	boolean ismodified = false;
+	boolean isRecording = false;
+	boolean isPlaying = false;
 	boolean endreached;
 	float rate = 1;
 	float snr = 0;
+	int size;
 	
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -61,16 +83,16 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         
     	bspeed = (Button) findViewById(R.id.go_speed);
-    	bspeed.setOnClickListener(gospeed);
+    	bspeed.setOnClickListener(goSpeed);
     	
     	bpitch = (Button) findViewById(R.id.go_pitch);
-    	bpitch.setOnClickListener(gopitch);
+    	bpitch.setOnClickListener(goPitch);
     	
     	bplay = (Button) findViewById(R.id.play);
-    	bplay.setOnClickListener(play);
+    	bplay.setOnClickListener(startPlaying);
     	
-    	bwave = (Button) findViewById(R.id.plot_wave);
-    	bwave.setOnClickListener(wave);
+    	brec = (Button) findViewById(R.id.record_sound);
+    	brec.setOnClickListener(startRecording);
     	
     	seekpitch = (SeekBar) findViewById(R.id.seekBarPitch);
     	seekpitch.setOnSeekBarChangeListener(set_rate);
@@ -79,7 +101,14 @@ public class MainActivity extends Activity {
 		tv2.setText(getString(R.string.rate, rate));
 		
 		wf = (ImageView) findViewById(R.id.waveForm);
-
+		
+		mHandler = new Handler() {
+	        @Override
+	        public void handleMessage(Message msg) {
+	            String text = (String)msg.obj;
+	            bplay.setText(text);
+	        }
+	};
 		
 //		tv3 = (TextView) findViewById(R.id.textView3);yo
 //		tv3.setText(getString(R.string.snr, snr));
@@ -108,7 +137,7 @@ public class MainActivity extends Activity {
 	    		int prog = seekpitch.getProgress();	    		
 	    		int max = seekpitch.getMax();
 	    		float x = (float)prog/(float)max;
-	 			rate = 1/4 + x*(9*x/2 - 3/4);// = 1/4 (resp. 4) when x = 0 (resp. 1)
+	 			rate = (float).25 + x*((float)4.5*x - (float).75);// = 1/4 (resp. 4) when x = 0 (resp. 1)
 	 			//NB: very weird TODO: fix this (cast float)
 	 			tv2.setText(getString(R.string.rate, rate));
 	 			
@@ -117,7 +146,87 @@ public class MainActivity extends Activity {
 	};
     
 	
-	private OnClickListener wave = new OnClickListener() {
+	private class DrawTask extends AsyncTask<Integer, Integer, Bitmap> {
+
+		 ProgressDialog dialog = new ProgressDialog(MainActivity.this);
+		 
+		 void show() {
+			    dialog.setMessage("Computing spectrogram...");
+			    dialog.setCancelable(false);
+			    dialog.show();
+			}
+
+		void hide() {
+			    dialog.dismiss();
+			}
+		 
+		void setProgressPercent(int p){
+			dialog.setMessage("Hello,\n\n" +
+					"welcome to Badass Inc.'s Rectangles 0.2!\n\n" +
+		    		"please wait, some effects are being installed...\n\n" +
+		    		p + "% processed...");
+		    dialog.show();
+		}
+		 
+		 @Override
+		 protected void onPreExecute() {
+			 show();
+		 }
+		 
+		 
+		 @Override
+		 protected Bitmap doInBackground(Integer... sizes) {
+			 
+			size = sizes[0];
+			float[] soundFloat = new float[size];
+
+			String path = rootsd.getAbsolutePath() + "/download/tmpmic";
+			File file = new File(path);
+			FileInputStream is;
+			try {
+				is = new FileInputStream(file);
+				BufferedInputStream bis = new BufferedInputStream(is);
+				LittleEndianDataInputStream ledis = new LittleEndianDataInputStream(bis);
+				for(int i = 0; i < size; i++) {
+					short val = ledis.readShort();
+					soundFloat[i] = (float)val;
+					}	
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+		
+//		    float[] waveform = waveform(array,512,50);
+			    
+			float[] window=sinebell(512,64);
+				
+			float[][] S=stft(soundFloat,window,64);
+//			Bitmap bitmap = plotwf(waveform,50);
+			Bitmap bitmap = plotspec(S,50);
+			bitmap = Bitmap.createScaledBitmap(bitmap,512,100,false);
+			return bitmap;	
+		}
+		 
+		 //protected void onProgressUpdate(Integer... progress) {
+	     //    setProgressPercent(progress[0]);
+	     //}
+	     
+
+		 protected void onPostExecute(Bitmap bmp) {
+			 
+			hide();
+			wf.setImageBitmap(bmp);
+
+	        return;
+	     }
+	 }
+	
+	
+	private OnClickListener draw = new OnClickListener() {
 		
 		@Override
 		public void onClick(View v) {
@@ -125,7 +234,9 @@ public class MainActivity extends Activity {
 			String path = rootsd.getAbsolutePath() + "/download/clar.wav";
 		    float[] array = floatsOfMonoWav(path);
 //		    float[] waveform = waveform(array,512,50);
+		    
 			float[] window=sinebell(512,64);
+			
 		    float[][] S=stft(array,window,64);
 //		    Bitmap bitmap = plotwf(waveform,50);
 		    Bitmap bitmap = plotspec(S,50);
@@ -133,6 +244,40 @@ public class MainActivity extends Activity {
 			wf.setImageBitmap(bitmap);
 
     	return;
+		}	
+	};
+	
+	private OnClickListener startPlaying = new OnClickListener() {
+		
+		@Override
+		public void onClick(View v) {
+		
+			isPlaying = !isPlaying;
+
+	    	
+	    	if(isPlaying){
+	    		
+	        	bplay.setText("stop");
+
+	        	playThread = new Thread(new Runnable() {
+	    		        public void run() {
+	    		        	isPlaying = true;
+	    		            try {
+								play();
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+	    		        }
+	    		    });
+	        	playThread.start();
+	    	}
+	    	else{
+	        	bplay.setText("play");
+	    		stopPlaying();
+	    	}				
+
+	    	return;
 		}	
 	};
 	
@@ -146,7 +291,7 @@ public class MainActivity extends Activity {
 			String playpath = ismodified?(rootsd.getAbsolutePath() + "/download/test1.wav"):(rootsd.getAbsolutePath() + "/download/clar.wav");
 			File file = new File(playpath);
 			Uri uri = Uri.fromFile(file);
-			Decoder decoder = new Decoder();
+			//Decoder decoder = new Decoder();
 
 			MediaPlayer mediaPlayer = new MediaPlayer();
 			mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
@@ -163,12 +308,12 @@ public class MainActivity extends Activity {
 	};
 
 	
-	private OnClickListener gopitch = new OnClickListener() {
+	private OnClickListener goPitch = new OnClickListener() {
 		
 		@Override
 		public void onClick(View v) {
 		
-			String path1 = rootsd.getAbsolutePath() + "/download/clar.wav";
+			String path1 = rootsd.getAbsolutePath() + "/download/tmpmic";
 			File file1 = new File(path1);
 
 			FileInputStream fis = null;
@@ -219,16 +364,176 @@ public class MainActivity extends Activity {
 
 	};
 	
-
-	private OnClickListener gospeed = new OnClickListener() {
+	
+	private OnClickListener startRecording = new OnClickListener() {
 		
 		@Override
 		public void onClick(View v) {
-			
-			String path1 = rootsd.getAbsolutePath() + "/download/clar.wav";
+		
 
-		    int sr = srOfWav(path1);
-		    short bps = bpsOfWav(path1);
+			
+	    	isRecording = !isRecording;
+	    	
+	    	if(isRecording){
+	    		brec.setText("stop");
+
+	        	recThread = new Thread(new Runnable() {
+	    		        public void run() {
+	    		            isRecording = true;
+	    		            try {
+								record();
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+	    		        }
+	    		    });
+	        	recThread.start();
+	    	}
+	    	else{
+	        	brec.setText("record");
+
+	        	stopRecording();
+	    	}
+
+	    	return;
+		}
+
+	};
+	
+	
+	
+    private void play() throws IOException {
+
+    	String path1 = rootsd.getAbsolutePath() + "/download/tmpmic";
+				File file1 = new File(path1);
+
+				FileInputStream fis = null;
+				BufferedInputStream bis = null;
+
+				try {
+					fis = new FileInputStream(file1);
+					bis = new BufferedInputStream(fis);
+				} catch (FileNotFoundException e) {
+						e.printStackTrace();
+				}
+				
+				LittleEndianDataInputStream ledis = new LittleEndianDataInputStream(bis);
+				
+				/*try {
+					ledis.skip(44);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}*/
+				int buffersize = 1024*8;
+				
+				audioTrack = new AudioTrack(
+					     AudioManager.STREAM_MUSIC,
+					     16000,
+					     AudioFormat.CHANNEL_CONFIGURATION_MONO,
+					     AudioFormat.ENCODING_PCM_16BIT,
+					     buffersize,
+					     AudioTrack.MODE_STREAM);
+					   
+				audioTrack.play();
+				
+				endreached = false;
+				
+				//int buffersizemod = (int)(buffersize;
+
+				while(!endreached){
+					
+					short[] audioData = shortArrayFromLittleEndianData(ledis,buffersize,!endreached);
+					audioTrack.write(audioData, 0, buffersize);
+					}
+				audioTrack.stop();
+				isPlaying = false;
+				Message msg = new Message();
+				String textTochange = "play";
+				msg.obj = textTochange;
+				mHandler.sendMessage(msg);
+				
+		    	return;
+
+			}
+
+
+    private void stopPlaying() {
+    	
+        audioTrack.stop();
+    }
+	
+	
+    private void record() throws IOException {
+    	
+    	size = 0;
+    	int sampleRate = 16000;
+    	
+    	int bufferSize = AudioRecord.getMinBufferSize(sampleRate,android.media.AudioFormat.CHANNEL_CONFIGURATION_MONO,android.media.AudioFormat.ENCODING_PCM_16BIT);
+
+    	mRecord = new AudioRecord(AudioSource.MIC, sampleRate, 
+    			android.media.AudioFormat.CHANNEL_CONFIGURATION_MONO,
+    			android.media.AudioFormat.ENCODING_PCM_16BIT, bufferSize);
+    	short[] short_buffer = new short[bufferSize];
+    	byte[] byte_buffer = new byte[2*bufferSize];
+
+    	String path = rootsd.getAbsolutePath() + "/download/tmpmic";
+		
+		File file = new File(path);
+		
+		FileOutputStream fos = new FileOutputStream(file);
+		BufferedOutputStream bos = new BufferedOutputStream(fos);
+		ledos = new LittleEndianDataOutputStream(bos);
+		mRecord.startRecording();
+
+		
+    	while(isRecording){
+    		
+    		int numSamples = mRecord.read(short_buffer, 0, short_buffer.length);
+    		//Log.d("last value recorded : ", String.valueOf(short_buffer[0]));
+    		//ByteBuffer.wrap(byte_buffer).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(short_buffer);
+    		for(int i = 0; i < numSamples; i++){
+            	ledos.writeShort(short_buffer[i]);
+            	size++;
+    		}
+
+    	    //queue.put(new Sample(buffer, numSamples));
+        	
+    	}
+    	//ledos.close();
+    }
+    
+
+    private void stopRecording() {
+    	
+    	try {
+    		ledos.flush();
+			ledos.close();
+			
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+        mRecord.stop();
+        mRecord.release();
+        mRecord = null;
+		new DrawTask().execute(size);
+
+    }
+	
+	
+
+	private OnClickListener goSpeed = new OnClickListener() {
+		
+		//@Override
+		public void onClick(View v) {
+			
+			//String path0 = 
+			String path1 = rootsd.getAbsolutePath() + "/download/tmpmic";
+
+		    int sr = 16000;//srOfWav(path1);
+		    //short bps = bpsOfWav(path1);
 		    		    
 		    int winlen = 1024;//64 ms for 16000 Hz
 		    int ola = 400;//40% overlap
@@ -905,7 +1210,7 @@ public class MainActivity extends Activity {
     }
 
     public short[] shortArrayFromLittleEndianData(LittleEndianDataInputStream ledis,int size, boolean test) {
-    	//endreachedshouldbefalse
+    	//endreached should be false
     	short[] shortarray = new short[size];
     	for(int i = 0; i < size; i++){
     		if(test){
@@ -926,7 +1231,7 @@ public class MainActivity extends Activity {
     }
     
     public float[] floatArrayFromLittleEndianData(LittleEndianDataInputStream ledis,int size, boolean test) {
-    	//endreachedshouldbefalse
+    	//endreached should be false
     	float[] floatarray = new float[size];
     	for(int i = 0; i < size; i++){
     		if(test){
@@ -945,6 +1250,8 @@ public class MainActivity extends Activity {
     	return floatarray;
     }
     
+    
+    
     public short[] floatArraytoShort(float[] farray){
     	
     	int len = farray.length;
@@ -953,7 +1260,7 @@ public class MainActivity extends Activity {
     	return sarray;
     }
     
-    
+        
     
     public void writeMonoWav(float[] soundFloat, int sr, short bps, String path){
     	
@@ -1120,6 +1427,7 @@ public class MainActivity extends Activity {
     		waveform[n] = max;
     	return waveform;
     }
+    
     
     public Bitmap plotwf(float[] waveform, int hnx){
     	//height of the bitmap output nx = 2*hnx +1
